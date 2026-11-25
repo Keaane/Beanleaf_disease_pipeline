@@ -2,7 +2,7 @@
 
 Classifies a photo of a bean leaf as **healthy**, **angular leaf spot** or **bean rust**, and covers the full ML cycle: data, preprocessing, training, evaluation, an API, a web UI, uploading new data, retraining, Docker deployment and load testing.
 
-- **Video demo:** TODO
+- **Video demo:** https://youtu.be/XFtBBeH6U6A
 - **Live app:** https://bean-watch.onrender.com (API docs at [/docs](https://bean-watch.onrender.com/docs))
 
 ## Project
