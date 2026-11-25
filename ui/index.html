@@ -73,7 +73,7 @@
   </div>
   <span class="pill"><span class="dot" id="hdrDot"></span><span id="hdrStatus">connecting</span></span>
   <span class="pill">uptime <b id="hdrUptime">-</b></span>
-  <span class="pill">replica <b id="hdrReplica">-</b></span>
+  <span class="pill" title="Which server (container) answered. Useful when several run behind a load balancer.">server <b id="hdrReplica">-</b></span>
 </header>
 
 <nav>
@@ -91,7 +91,7 @@
   <p class="lead">Live status of the API and model. Refreshes every 5 seconds.</p>
   <div class="grid">
     <div class="card"><div class="label">Status</div><div class="value" id="mStatus">-</div><div class="note" id="mStarted"></div></div>
-    <div class="card"><div class="label">Uptime</div><div class="value" id="mUptime">-</div><div class="note">since this replica started</div></div>
+    <div class="card"><div class="label">Uptime</div><div class="value" id="mUptime">-</div><div class="note">since this server started</div></div>
     <div class="card"><div class="label">Model updated</div><div class="value" style="font-size:16px" id="mModel">-</div><div class="note" id="mModelSize"></div></div>
     <div class="card"><div class="label">Predictions served</div><div class="value" id="mPreds">-</div><div class="note" id="mPredsHour"></div></div>
     <div class="card"><div class="label">Avg inference time</div><div class="value" id="mLatency">-</div><div class="note">per image, inside the API</div></div>
@@ -216,6 +216,7 @@ const NAMES = { angular_leaf_spot: 'Angular leaf spot', bean_rust: 'Bean rust', 
 const CLASSES = Object.keys(NAMES);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const shortName = name => String(name || '-').split('-').pop();  // last part of the container name
 const pct = v => v == null ? '-' : (v * 100).toFixed(1) + '%';
 const fmtTime = t => t ? new Date(t * 1000).toLocaleString() : '-';
 function fmtUptime(s) {
@@ -253,10 +254,10 @@ async function refreshStatus() {
   try {
     const s = await api('/status');
     uptimeBase = s.uptime_seconds; uptimeAt = Date.now();
-    $('hdrDot').className = 'dot up'; $('hdrStatus').textContent = 'API up'; $('hdrReplica').textContent = s.replica;
+    $('hdrDot').className = 'dot up'; $('hdrStatus').textContent = 'API up'; $('hdrReplica').textContent = shortName(s.replica);
     $('mStatus').innerHTML = '<span class="good">Up</span>'; $('mStarted').textContent = 'started ' + s.started_at;
-    $('mModel').textContent = s.model.loaded ? s.model.last_updated : 'no model';
-    $('mModelSize').textContent = s.model.loaded ? `${s.model.file}, ${s.model.size_mb} MB` : '';
+    $('mModel').textContent = s.model.last_updated;
+    $('mModelSize').textContent = `${s.model.file}, ${s.model.size_mb} MB`;
     $('mPreds').textContent = s.predictions.total; $('mPredsHour').textContent = s.predictions.last_hour + ' in the last hour';
     $('mLatency').textContent = s.predictions.avg_latency_ms != null ? s.predictions.avg_latency_ms + ' ms' : '-';
     $('mPending').textContent = s.uploads_pending;
@@ -305,7 +306,7 @@ $('pBtn').onclick = async () => {
     const r = await api('/predict', { method: 'POST', body: fd });
     const c = r.predicted_class;
     $('pResult').innerHTML = `<div class="result-class t-${c}">${NAMES[c]}</div>
-      <div class="muted">confidence ${pct(r.confidence)} &middot; ${r.latency_ms} ms on replica ${esc(r.replica)}</div>
+      <div class="muted">confidence ${pct(r.confidence)} &middot; ${r.latency_ms} ms on server ${esc(shortName(r.replica))}</div>
       <div class="bars mt" id="pBars"></div>
       <div class="msg">${c === 'healthy' ? 'No disease detected.' : c === 'bean_rust' ? 'Bean rust detected: round reddish-brown pustules. Remove infected leaves and consider a fungicide.' : 'Angular leaf spot detected: angular brown lesions between veins. Avoid overhead watering and rotate crops.'}</div>`;
     const probs = {}; CLASSES.forEach(k => probs[k] = Math.round(r.class_probabilities[k] * 1000) / 10);
