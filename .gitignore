@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+# runtime state (SQLite database with uploads, predictions, retrain jobs)
+state/
+*.db
+*.db-wal
+*.db-shm
+
+# model versions created by retraining (bean_model.h5 is committed)
+models/versions/
+models/retrain_demo/
+models/*.tmp
