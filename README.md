@@ -3,7 +3,7 @@
 Classifies a photo of a bean leaf as **healthy**, **angular leaf spot** or **bean rust**, and covers the full ML cycle: data, preprocessing, training, evaluation, an API, a web UI, uploading new data, retraining, Docker deployment and load testing.
 
 - **Video demo:** TODO
-- **Live app:** TODO (API docs at `/docs`)
+- **Live app:** https://bean-watch.onrender.com (API docs at [/docs](https://bean-watch.onrender.com/docs))
 
 ## Project
 
@@ -134,7 +134,7 @@ Open http://localhost:8080. nginx spreads requests over the containers (the UI h
 1. On [Render](https://dashboard.render.com): **New** → **Blueprint** → choose this repo. It reads `render.yaml`.
 2. Wait for the build, then open the URL.
 
-The free plan has 512 MB RAM, sleeps after 15 idle minutes, and loses uploads and retrained models on restart.
+The free plan has 512 MB RAM, sleeps after 15 idle minutes (the first visit then takes about a minute), and loses uploads and retrained models on restart. Retraining fits in 512 MB because it reuses the loaded model and trains only the head on MobileNetV2 features.
 
 ## API
 
