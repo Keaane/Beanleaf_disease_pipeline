@@ -1,0 +1,10 @@
+.git
+**/__pycache__
+**/.ipynb_checkpoints
+notebook/
+locust/
+sample_images/
+state/
+models/versions/
+models/retrain_demo/
+*.md

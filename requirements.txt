@@ -1,0 +1,14 @@
+# Local setup: notebook, API and load testing (any OS)
+tensorflow==2.21.0
+numpy
+pillow
+scikit-learn
+pandas
+matplotlib
+seaborn
+datasets
+fastapi
+uvicorn[standard]
+python-multipart
+jupyter
+locust

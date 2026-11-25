@@ -1,0 +1,8 @@
+# API container only (Linux). Use requirements.txt for a local install.
+tensorflow-cpu==2.21.0
+numpy
+pillow
+scikit-learn
+fastapi
+uvicorn[standard]
+python-multipart
