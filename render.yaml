@@ -13,9 +13,9 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
-      # smaller retraining so it fits in 512 MB
+      # batch size 1 matches predictions, so retraining reuses the same graph and fits in 512 MB
       - key: RETRAIN_BATCH_SIZE
-        value: "4"
+        value: "1"
       - key: RETRAIN_REPLAY_PER_CLASS
         value: "15"
       - key: RETRAIN_EPOCHS
