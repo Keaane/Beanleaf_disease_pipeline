@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bean Watch: leaf disease classifier</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #172117; --panel: #1f2c20; --panel2: #26361f; --line: #3a4a34;
+    --text: #ede6d3; --dim: #a9a489;
+    --healthy: #7fb069; --spot: #d8a940; --rust: #d0703e; --bad: #d05a4a; --good: #7fb069;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 28px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  header .sub { color: var(--dim); font-size: 13px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; background: var(--panel2); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot.up { background: var(--good); box-shadow: 0 0 6px var(--good); }
+  .dot.down { background: var(--bad); }
+  nav { display: flex; gap: 4px; padding: 10px 28px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  nav button { background: none; border: none; color: var(--dim); padding: 10px 14px; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+  nav button.active { color: var(--text); border-bottom-color: var(--healthy); }
+  main { padding: 24px 28px 60px; max-width: 1200px; }
+  section { display: none; } section.active { display: block; }
+  h2 { font-size: 17px; margin: 0 0 4px; } h3 { font-size: 15px; margin: 0 0 10px; }
+  .lead { color: var(--dim); margin: 0 0 20px; max-width: 760px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .card .label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card .note { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .mt { margin-top: 18px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  th { color: var(--dim); font-weight: 500; }
+  .bars .row { display: grid; grid-template-columns: 140px 1fr 60px; align-items: center; gap: 10px; margin: 7px 0; }
+  .bars .track { background: var(--panel2); border-radius: 4px; height: 14px; overflow: hidden; display: flex; }
+  .bars .fill { height: 100%; }
+  .bars .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+  .c-angular_leaf_spot { background: var(--spot); } .c-bean_rust { background: var(--rust); } .c-healthy { background: var(--healthy); }
+  .t-angular_leaf_spot { color: var(--spot); } .t-bean_rust { color: var(--rust); } .t-healthy { color: var(--healthy); }
+  button.primary { background: var(--healthy); color: #10200f; border: none; padding: 10px 18px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); padding: 9px 16px; border-radius: 8px; font: inherit; cursor: pointer; }
+  select, input[type=file] { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; }
+  .drop { border: 2px dashed var(--line); border-radius: var(--radius); padding: 26px; text-align: center; color: var(--dim); cursor: pointer; }
+  .drop.over { border-color: var(--healthy); color: var(--text); }
+  .preview { max-width: 100%; max-height: 320px; border-radius: 8px; display: block; margin: 0 auto; }
+  .result-class { font-size: 28px; font-weight: 700; }
+  .msg { padding: 10px 12px; border-radius: 8px; background: var(--panel2); margin-top: 12px; font-size: 13px; }
+  .msg.err { border-left: 3px solid var(--bad); } .msg.ok { border-left: 3px solid var(--good); }
+  pre.log { background: #0f170f; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 12px; max-height: 300px; overflow: auto; white-space: pre-wrap; margin: 0; }
+  .progress { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; margin: 6px 0 4px; }
+  .progress > div { height: 100%; background: var(--healthy); transition: width .3s; }
+  figure { margin: 0; } figure img { width: 100%; border-radius: 8px; background: #fff; }
+  figcaption { margin-top: 10px; color: var(--text); font-size: 13px; }
+  figcaption b { display: block; margin-bottom: 4px; }
+  .cm td, .cm th { text-align: center; } .cm td.diag { background: #2f4a27; font-weight: 600; }
+  .muted { color: var(--dim); } .good { color: var(--good); } .bad { color: var(--bad); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Bean Watch</h1>
+    <div class="sub">Bean leaf disease classifier: healthy, angular leaf spot, bean rust</div>
+  </div>
+  <span class="pill"><span class="dot" id="hdrDot"></span><span id="hdrStatus">connecting</span></span>
+  <span class="pill">uptime <b id="hdrUptime">-</b></span>
+  <span class="pill">replica <b id="hdrReplica">-</b></span>
+</header>
+
+<nav>
+  <button data-tab="monitor" class="active">Monitor</button>
+  <button data-tab="predict">Predict</button>
+  <button data-tab="insights">Data insights</button>
+  <button data-tab="retrain">Upload &amp; retrain</button>
+  <button data-tab="evaluate">Evaluate</button>
+</nav>
+
+<main>
+<!-- MONITOR -->
+<section id="monitor" class="active">
+  <h2>Model monitoring</h2>
+  <p class="lead">Live status of the API and model. Refreshes every 5 seconds.</p>
+  <div class="grid">
+    <div class="card"><div class="label">Status</div><div class="value" id="mStatus">-</div><div class="note" id="mStarted"></div></div>
+    <div class="card"><div class="label">Uptime</div><div class="value" id="mUptime">-</div><div class="note">since this replica started</div></div>
+    <div class="card"><div class="label">Model updated</div><div class="value" style="font-size:16px" id="mModel">-</div><div class="note" id="mModelSize"></div></div>
+    <div class="card"><div class="label">Predictions served</div><div class="value" id="mPreds">-</div><div class="note" id="mPredsHour"></div></div>
+    <div class="card"><div class="label">Avg inference time</div><div class="value" id="mLatency">-</div><div class="note">per image, inside the API</div></div>
+    <div class="card"><div class="label">New images waiting</div><div class="value" id="mPending">-</div><div class="note" id="mThreshold"></div></div>
+  </div>
+  <div class="grid2 mt">
+    <div class="card">
+      <h3>Test-set metrics of the trained model</h3>
+      <table id="mMetrics"><tr><td class="muted">loading</td></tr></table>
+    </div>
+    <div class="card">
+      <h3>Predictions by class</h3>
+      <div class="bars" id="mByClass"><span class="muted">No predictions yet.</span></div>
+    </div>
+  </div>
+  <div class="grid2 mt">
+    <div class="card">
+      <h3>Recent predictions</h3>
+      <table id="mRecent"></table>
+    </div>
+    <div class="card">
+      <h3>Latest retraining</h3>
+      <div id="mRetrain" class="muted">No retraining yet.</div>
+    </div>
+  </div>
+</section>
+
+<!-- PREDICT -->
+<section id="predict">
+  <h2>Predict one leaf</h2>
+  <p class="lead">Upload a photo of a single bean leaf. The image is resized to 224x224, scaled to [0, 1] and passed to the fine-tuned MobileNetV2 model.</p>
+  <div class="grid2">
+    <div class="card">
+      <div class="drop" id="pDrop">Drop an image here or click to choose<br><small>JPG or PNG</small></div>
+      <input type="file" id="pFile" accept="image/*" hidden>
+      <img id="pPreview" class="preview mt" hidden alt="selected leaf">
+      <div class="row mt"><button class="primary" id="pBtn" disabled>Predict</button><span class="muted" id="pName"></span></div>
+    </div>
+    <div class="card">
+      <div class="label">Prediction</div>
+      <div id="pResult" class="muted mt">Choose an image to get a prediction.</div>
+    </div>
+  </div>
+</section>
+
+<!-- INSIGHTS -->
+<section id="insights">
+  <h2>Data insights</h2>
+  <p class="lead">What the iBean dataset looks like, and which image features separate the classes. The plots come from the training notebook; the counts below are live.</p>
+  <div class="card">
+    <h3>Images per class (live)</h3>
+    <div class="bars" id="iCounts"></div>
+    <div class="note muted">Original training images plus images uploaded through this app. The test set has <span id="iTest"></span> images.</div>
+  </div>
+  <div class="grid2 mt">
+    <div class="card"><figure><img src="/ui/img/sample_images.png" alt="sample leaves per class" loading="lazy"><figcaption><b>What each class looks like</b>Angular leaf spot: angular grey-brown patches bounded by the veins. Bean rust: many small round reddish-brown pustules. Healthy: evenly green. Most photos include soil, hands or other leaves in the background.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/class_distribution.png" alt="class distribution" loading="lazy"><figcaption><b>Feature 1: class balance</b>The classes are almost equal in size, so the model cannot score well by favouring one class and accuracy is a fair headline metric. Macro precision, recall and F1 are reported as well.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/feature_brightness.png" alt="brightness by class" loading="lazy"><figcaption><b>Feature 2: brightness</b>The three classes overlap almost completely; rust photos are only slightly darker. Lighting is not a shortcut, so the model has to judge the leaf itself, which helps with farmer photos taken in different light.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/feature_green_fraction.png" alt="green fraction by class" loading="lazy"><figcaption><b>Feature 3: green fraction</b>The strongest single feature: about <span data-f="healthy.green_fraction"></span> of a typical healthy photo is green-dominant, against about <span data-f="angular_leaf_spot.green_fraction"></span> (angular leaf spot) and <span data-f="bean_rust.green_fraction"></span> (rust). Infected tissue turns brown or yellow.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/feature_lesion_fraction.png" alt="lesion fraction by class" loading="lazy"><figcaption><b>Feature 4: lesion-coloured fraction</b>The mirror image of green: both diseases have about twice the brown and yellow area of healthy leaves. Healthy photos are not at zero because soil and dry stems share those colours.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/feature_edge_density.png" alt="edge density by class" loading="lazy"><figcaption><b>Feature 5: edge density</b>Healthy photos have slightly more edges, not fewer. Simple edges come mostly from veins, leaf outlines and busy backgrounds, so this feature does not capture the disease texture.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/feature_scatter.png" alt="green vs lesion scatter" loading="lazy"><figcaption><b>The story</b>Colour alone separates healthy from diseased leaves, but angular leaf spot and bean rust overlap on every simple feature. What tells them apart is the shape of the lesions (angular patches vs round pustules), which is why a CNN is used and why most model errors are between the two diseases.</figcaption></figure></div>
+    <div class="card"><figure><img src="/ui/img/confusion_matrix.png" alt="confusion matrix" loading="lazy"><figcaption><b>Where the model still errs</b>Confusion matrix on the 128 held-out test images. Healthy leaves are almost always right; the remaining mistakes are mostly between the two diseases, as the feature analysis predicted.</figcaption></figure></div>
+  </div>
+</section>
+
+<!-- RETRAIN -->
+<section id="retrain">
+  <h2>Upload new data and retrain</h2>
+  <p class="lead">Upload labelled leaf photos in bulk. They are checked and stored in the database. Retraining loads them back, preprocesses them, continues training from the current model, and only replaces the live model if the new one scores at least as well on the test set.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>1. Upload images</h3>
+      <div class="row">
+        <label for="uClass">Class</label>
+        <select id="uClass">
+          <option value="angular_leaf_spot">Angular leaf spot</option>
+          <option value="bean_rust">Bean rust</option>
+          <option value="healthy">Healthy</option>
+        </select>
+      </div>
+      <div class="drop mt" id="uDrop">Drop several images here or click to choose</div>
+      <input type="file" id="uFiles" accept="image/*" multiple hidden>
+      <div class="row mt"><button class="primary" id="uBtn" disabled>Upload</button><span class="muted" id="uCount"></span></div>
+      <div id="uResult"></div>
+    </div>
+    <div class="card">
+      <h3>2. Retrain</h3>
+      <div class="muted">New images waiting for the next retrain</div>
+      <div class="bars" id="rPending"></div>
+      <div class="progress"><div id="rBar" style="width:0%"></div></div>
+      <div class="note muted" id="rTrigger"></div>
+      <div class="row mt"><button class="primary" id="rBtn">Retrain now</button><span id="rState" class="muted"></span></div>
+      <div id="rMsg"></div>
+    </div>
+  </div>
+  <div class="card mt">
+    <h3>Retraining job log</h3>
+    <pre class="log" id="rLog">No job has run yet.</pre>
+  </div>
+  <div class="card mt">
+    <h3>Retraining history</h3>
+    <table id="rHistory"></table>
+  </div>
+  <div class="card mt">
+    <h3>Recent uploads</h3>
+    <table id="uList"></table>
+  </div>
+</section>
+
+<!-- EVALUATE -->
+<section id="evaluate">
+  <h2>Evaluate the live model</h2>
+  <p class="lead">Runs the model currently being served on the 128 held-out test images (never used for training) and reports the metrics. Run it again after a retrain to see the effect.</p>
+  <button class="primary" id="eBtn">Evaluate on test set</button> <span class="muted" id="eState"></span>
+  <div id="eOut" class="mt"></div>
+</section>
+</main>
+
+<script>
+const NAMES = { angular_leaf_spot: 'Angular leaf spot', bean_rust: 'Bean rust', healthy: 'Healthy' };
+const CLASSES = Object.keys(NAMES);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pct = v => v == null ? '-' : (v * 100).toFixed(1) + '%';
+const fmtTime = t => t ? new Date(t * 1000).toLocaleString() : '-';
+function fmtUptime(s) {
+  s = Math.floor(s); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  return (d ? d + 'd ' : '') + (d || h ? h + 'h ' : '') + m + 'm ' + sec + 's';
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+function bars(el, counts, max, extra) {
+  max = max || Math.max(1, ...Object.values(counts));
+  el.innerHTML = CLASSES.map(c => {
+    const v = counts[c] || 0, e = extra ? (extra[c] || 0) : 0;
+    return `<div class="row"><span class="t-${c}">${NAMES[c]}</span><div class="track">
+      <div class="fill c-${c}" style="width:${v / max * 100}%"></div>
+      ${extra ? `<div class="fill" style="width:${e / max * 100}%;background:#ede6d3"></div>` : ''}</div>
+      <span class="num">${v}${extra ? ' + ' + e : ''}</span></div>`;
+  }).join('');
+}
+
+// tabs
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('active', s.id === b.dataset.tab));
+  if (b.dataset.tab === 'insights') loadInsights();
+  if (b.dataset.tab === 'retrain') { loadRetrain(); loadUploads(); }
+});
+
+// monitor
+let uptimeBase = null, uptimeAt = null;
+async function refreshStatus() {
+  try {
+    const s = await api('/status');
+    uptimeBase = s.uptime_seconds; uptimeAt = Date.now();
+    $('hdrDot').className = 'dot up'; $('hdrStatus').textContent = 'API up'; $('hdrReplica').textContent = s.replica;
+    $('mStatus').innerHTML = '<span class="good">Up</span>'; $('mStarted').textContent = 'started ' + s.started_at;
+    $('mModel').textContent = s.model.loaded ? s.model.last_updated : 'no model';
+    $('mModelSize').textContent = s.model.loaded ? `${s.model.file}, ${s.model.size_mb} MB` : '';
+    $('mPreds').textContent = s.predictions.total; $('mPredsHour').textContent = s.predictions.last_hour + ' in the last hour';
+    $('mLatency').textContent = s.predictions.avg_latency_ms != null ? s.predictions.avg_latency_ms + ' ms' : '-';
+    $('mPending').textContent = s.uploads_pending;
+    $('mThreshold').textContent = s.auto_retrain ? `auto-retrain at ${s.retrain_threshold}` : `retrain recommended at ${s.retrain_threshold}`;
+    const m = s.model.training_test_metrics;
+    $('mMetrics').innerHTML = m ? [['Accuracy', pct(m.accuracy)], ['Precision (macro)', pct(m.precision)], ['Recall (macro)', pct(m.recall)], ['F1 (macro)', pct(m.f1)], ['Loss', m.loss.toFixed(4)]]
+      .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('') : '<tr><td class="muted">No metrics.json found</td></tr>';
+    if (s.predictions.total) bars($('mByClass'), s.predictions.by_class);
+    $('mRecent').innerHTML = '<tr><th>Time</th><th>Prediction</th><th>Confidence</th><th>Inference</th></tr>' +
+      (s.predictions.recent.map(p => `<tr><td>${new Date(p.created_at * 1000).toLocaleTimeString()}</td><td class="t-${p.predicted_class}">${NAMES[p.predicted_class]}</td><td>${pct(p.confidence)}</td><td>${p.latency_ms.toFixed(0)} ms</td></tr>`).join('') || '<tr><td colspan="4" class="muted">None yet</td></tr>');
+    const r = s.latest_retrain;
+    $('mRetrain').innerHTML = r ? `<table>
+      <tr><td>Job</td><td>${esc(r.job_id)} (${esc(r.trigger)})</td></tr>
+      <tr><td>Status</td><td>${esc(r.status)}${r.status === 'running' ? ' - ' + esc(r.stage) : ''}</td></tr>
+      ${r.new_f1 != null ? `<tr><td>Test F1 old / new</td><td>${pct(r.old_f1)} / ${pct(r.new_f1)}</td></tr>
+      <tr><td>Promoted</td><td>${r.promoted ? '<span class="good">yes</span>' : '<span class="bad">no</span>'}</td></tr>` : ''}
+      <tr><td>Started</td><td>${fmtTime(r.started_at)}</td></tr></table>` : 'No retraining yet.';
+  } catch (e) {
+    $('hdrDot').className = 'dot down'; $('hdrStatus').textContent = 'API unreachable'; $('mStatus').innerHTML = '<span class="bad">Down</span>';
+  }
+}
+setInterval(() => {
+  if (uptimeBase == null) return;
+  const u = fmtUptime(uptimeBase + (Date.now() - uptimeAt) / 1000);
+  $('hdrUptime').textContent = u; $('mUptime').textContent = u;
+}, 1000);
+refreshStatus(); setInterval(refreshStatus, 5000);
+
+// predict
+let pFile = null;
+function pickPredict(f) {
+  if (!f) return; pFile = f; $('pName').textContent = f.name; $('pBtn').disabled = false;
+  $('pPreview').src = URL.createObjectURL(f); $('pPreview').hidden = false;
+  $('pResult').innerHTML = '<span class="muted">Ready. Press Predict.</span>';
+}
+$('pDrop').onclick = () => $('pFile').click();
+$('pFile').onchange = e => pickPredict(e.target.files[0]);
+['dragover', 'dragleave', 'drop'].forEach(ev => $('pDrop').addEventListener(ev, e => {
+  e.preventDefault(); $('pDrop').classList.toggle('over', ev === 'dragover');
+  if (ev === 'drop') pickPredict(e.dataTransfer.files[0]);
+}));
+$('pBtn').onclick = async () => {
+  $('pBtn').disabled = true; $('pResult').innerHTML = '<span class="muted">Predicting...</span>';
+  const fd = new FormData(); fd.append('file', pFile);
+  try {
+    const r = await api('/predict', { method: 'POST', body: fd });
+    const c = r.predicted_class;
+    $('pResult').innerHTML = `<div class="result-class t-${c}">${NAMES[c]}</div>
+      <div class="muted">confidence ${pct(r.confidence)} &middot; ${r.latency_ms} ms on replica ${esc(r.replica)}</div>
+      <div class="bars mt" id="pBars"></div>
+      <div class="msg">${c === 'healthy' ? 'No disease detected.' : c === 'bean_rust' ? 'Bean rust detected: round reddish-brown pustules. Remove infected leaves and consider a fungicide.' : 'Angular leaf spot detected: angular brown lesions between veins. Avoid overhead watering and rotate crops.'}</div>`;
+    const probs = {}; CLASSES.forEach(k => probs[k] = Math.round(r.class_probabilities[k] * 1000) / 10);
+    bars($('pBars'), probs, 100);
+    $('pBars').querySelectorAll('.num').forEach((n, i) => n.textContent = probs[CLASSES[i]] + '%');
+  } catch (e) { $('pResult').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  $('pBtn').disabled = false; refreshStatus();
+};
+
+// insights
+async function loadInsights() {
+  try {
+    const d = await api('/visualizations/class-distribution');
+    bars($('iCounts'), d.original, null, d.uploaded);
+    $('iTest').textContent = Object.values(d.test).reduce((a, b) => a + b, 0);
+    const f = await api('/visualizations/features');
+    document.querySelectorAll('[data-f]').forEach(el => {
+      const [c, k] = el.dataset.f.split('.'); el.textContent = Math.round(f.feature_medians[c][k] * 100) + '%';
+    });
+  } catch (e) { $('iCounts').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+}
+
+// upload
+let uFiles = [];
+function pickUpload(list) { uFiles = [...list]; $('uCount').textContent = uFiles.length + ' file(s) selected'; $('uBtn').disabled = !uFiles.length; }
+$('uDrop').onclick = () => $('uFiles').click();
+$('uFiles').onchange = e => pickUpload(e.target.files);
+['dragover', 'dragleave', 'drop'].forEach(ev => $('uDrop').addEventListener(ev, e => {
+  e.preventDefault(); $('uDrop').classList.toggle('over', ev === 'dragover');
+  if (ev === 'drop') pickUpload(e.dataTransfer.files);
+}));
+$('uBtn').onclick = async () => {
+  $('uBtn').disabled = true; $('uResult').innerHTML = '<div class="msg">Uploading...</div>';
+  const fd = new FormData(); uFiles.forEach(f => fd.append('files', f));
+  try {
+    const r = await api('/upload-data/' + $('uClass').value, { method: 'POST', body: fd });
+    $('uResult').innerHTML = `<div class="msg ok">Saved <b>${r.saved}</b> image(s) to the database as <b>${NAMES[r.class_name]}</b>.
+      ${r.duplicates.length ? `<br>${r.duplicates.length} duplicate(s) skipped.` : ''}
+      ${r.rejected.length ? `<br>Rejected (not images): ${r.rejected.map(esc).join(', ')}` : ''}
+      ${r.auto_retrain_started ? `<br><b>Threshold reached: retraining started automatically (${esc(r.auto_retrain_started)}).</b>` : ''}</div>`;
+    uFiles = []; $('uFiles').value = ''; $('uCount').textContent = '';
+    loadRetrain(); loadUploads(); refreshStatus();
+  } catch (e) { $('uResult').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; $('uBtn').disabled = false; }
+};
+async function loadUploads() {
+  const rows = await api('/uploads?limit=20');
+  $('uList').innerHTML = '<tr><th>#</th><th>Class</th><th>File</th><th>Size</th><th>Uploaded</th><th>Used in job</th></tr>' +
+    (rows.map(u => `<tr><td>${u.id}</td><td class="t-${u.class_name}">${NAMES[u.class_name]}</td><td>${esc(u.filename)}</td><td>${(u.size_bytes / 1024).toFixed(0)} KB</td><td>${fmtTime(u.uploaded_at)}</td><td>${esc(u.retrain_job_id || 'waiting')}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No uploads yet</td></tr>');
+}
+
+// retrain
+let polling = null;
+async function loadRetrain() {
+  const [s, job, hist] = await Promise.all([api('/status'), api('/retrain/status'), api('/retrain/history')]);
+  bars($('rPending'), s.uploads_pending_by_class, Math.max(10, ...Object.values(s.uploads_pending_by_class)));
+  $('rBar').style.width = Math.min(100, s.uploads_pending / s.retrain_threshold * 100) + '%';
+  $('rTrigger').textContent = `${s.uploads_pending} / ${s.retrain_threshold} new images` +
+    (s.auto_retrain ? ' - retraining starts automatically at the threshold' : ' - retraining recommended at the threshold');
+  const running = job.status === 'running';
+  $('rBtn').disabled = running;
+  $('rState').textContent = running ? 'running: ' + job.stage : '';
+  if (job.status !== 'none') $('rLog').textContent = `Job ${job.job_id} (${job.trigger}) - ${job.status}\n` + (job.log || []).join('\n');
+  $('rLog').scrollTop = $('rLog').scrollHeight;
+  $('rHistory').innerHTML = '<tr><th>Job</th><th>Trigger</th><th>Status</th><th>New imgs</th><th>Epochs</th><th>Old acc / F1</th><th>New acc / F1</th><th>Promoted</th></tr>' +
+    (hist.map(h => `<tr><td>${esc(h.job_id)}</td><td>${esc(h.trigger)}</td><td>${esc(h.status)}</td><td>${h.new_images ?? '-'}</td><td>${h.epochs_run ?? '-'}</td>
+      <td>${pct(h.old_accuracy)} / ${pct(h.old_f1)}</td><td>${pct(h.new_accuracy)} / ${pct(h.new_f1)}</td>
+      <td>${h.promoted == null ? '-' : h.promoted ? '<span class="good">yes</span>' : '<span class="bad">no</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No jobs yet</td></tr>');
+  if (running && !polling) polling = setInterval(loadRetrain, 2000);
+  if (!running && polling) { clearInterval(polling); polling = null; loadUploads(); refreshStatus(); }
+}
+$('rBtn').onclick = async () => {
+  $('rMsg').innerHTML = '';
+  try { const r = await api('/retrain', { method: 'POST' }); $('rMsg').innerHTML = `<div class="msg ok">Started job ${esc(r.job_id)}.</div>`; }
+  catch (e) { $('rMsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  loadRetrain();
+};
+
+// evaluate
+$('eBtn').onclick = async () => {
+  $('eBtn').disabled = true; $('eState').textContent = 'Evaluating 128 test images...';
+  try {
+    const m = await api('/evaluate', { method: 'POST' });
+    $('eState').textContent = `done in ${m.seconds}s (model updated ${m.model_last_updated})`;
+    const cm = m.confusion_matrix;
+    $('eOut').innerHTML = `<div class="grid">${[['Accuracy', pct(m.accuracy)], ['Precision (macro)', pct(m.precision)], ['Recall (macro)', pct(m.recall)], ['F1 (macro)', pct(m.f1)], ['Loss', m.loss.toFixed(4)]]
+      .map(([k, v]) => `<div class="card"><div class="label">${k}</div><div class="value">${v}</div></div>`).join('')}</div>
+      <div class="card mt"><h3>Confusion matrix (${m.n_images} test images)</h3><table class="cm">
+      <tr><th>actual \\ predicted</th>${m.class_names.map(c => `<th class="t-${c}">${NAMES[c]}</th>`).join('')}</tr>
+      ${cm.map((row, i) => `<tr><th class="t-${m.class_names[i]}">${NAMES[m.class_names[i]]}</th>${row.map((v, j) => `<td class="${i === j ? 'diag' : ''}">${v}</td>`).join('')}</tr>`).join('')}
+      </table></div>`;
+  } catch (e) { $('eState').textContent = ''; $('eOut').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  $('eBtn').disabled = false;
+};
+</script>
+</body>
+</html>
