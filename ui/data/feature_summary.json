@@ -1,0 +1,27 @@
+{
+  "class_counts": {
+    "angular_leaf_spot": 374,
+    "bean_rust": 378,
+    "healthy": 370
+  },
+  "feature_medians": {
+    "angular_leaf_spot": {
+      "brightness": 112.238,
+      "green_fraction": 0.453,
+      "lesion_fraction": 0.462,
+      "edge_density": 0.165
+    },
+    "bean_rust": {
+      "brightness": 111.026,
+      "green_fraction": 0.435,
+      "lesion_fraction": 0.453,
+      "edge_density": 0.188
+    },
+    "healthy": {
+      "brightness": 115.786,
+      "green_fraction": 0.717,
+      "lesion_fraction": 0.215,
+      "edge_density": 0.233
+    }
+  }
+}
