@@ -21,8 +21,8 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 import database  # noqa: E402
 import retrain_job  # noqa: E402
-from model import MODEL_FILENAME, evaluate_model  # noqa: E402
-from prediction import load_model, predict_image  # noqa: E402
+from model import MODEL_FILENAME, compute_metrics, extract_features  # noqa: E402
+from prediction import load_parts, predict_image  # noqa: E402
 from preprocessing import CLASS_NAMES, class_counts, is_valid_image, list_images, make_dataset  # noqa: E402
 
 MODEL_DIR = os.environ.get("BEAN_MODEL_DIR", os.path.join(ROOT, "models"))
@@ -44,7 +44,6 @@ RETRAIN_CONFIG = {
     "replay_per_class": int(os.environ.get("RETRAIN_REPLAY_PER_CLASS", 30)),
     "batch_size": int(os.environ.get("RETRAIN_BATCH_SIZE", 16)),
     "epochs": int(os.environ.get("RETRAIN_EPOCHS", 5)),
-    "fine_tune_layers": int(os.environ.get("RETRAIN_FINE_TUNE_LAYERS", 0)),
     "learning_rate": float(os.environ.get("RETRAIN_LR", 1e-4)),
 }
 
@@ -57,7 +56,7 @@ _evaluation_lock = threading.Lock()
 @asynccontextmanager
 async def lifespan(app):
     database.init_db()
-    load_model(MODEL_PATH)  # load once so the first prediction is fast
+    load_parts(MODEL_PATH)  # load once so the first prediction is fast
     yield
 
 
@@ -196,8 +195,10 @@ def evaluate():
     with _evaluation_lock:
         if _evaluation["model_time"] != model_time:
             start = time.perf_counter()
-            test_ds = make_dataset(*list_images(TEST_DIR), batch_size=8)
-            result = evaluate_model(load_model(MODEL_PATH), test_ds)
+            _, extractor, head = load_parts(MODEL_PATH)
+            test_ds = make_dataset(*list_images(TEST_DIR), RETRAIN_CONFIG["batch_size"])
+            x_test, y_test = extract_features(extractor, test_ds)
+            result = compute_metrics(y_test, head.predict(x_test, verbose=0))
             result["seconds"] = round(time.perf_counter() - start, 1)
             result["model_last_updated"] = model_info()["last_updated"]
             result["class_names"] = CLASS_NAMES

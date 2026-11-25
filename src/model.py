@@ -83,6 +83,10 @@ def predict_dataset(model, ds):
 def evaluate_model(model, ds):
     """Accuracy, loss, macro precision/recall/F1 and confusion matrix."""
     y_true, y_prob = predict_dataset(model, ds)
+    return compute_metrics(y_true, y_prob)
+
+
+def compute_metrics(y_true, y_prob):
     y_pred = y_prob.argmax(axis=1)
     loss = -np.mean(np.log(y_prob[np.arange(len(y_true)), y_true] + 1e-7))
     return {
@@ -119,36 +123,48 @@ def retrain_model(model, train_ds, val_ds, epochs=5, learning_rate=1e-4,
     """Continue training our saved model (a path or a loaded model). Returns (model, history).
 
     With n_trainable=0 the base stays frozen, so its features are computed once
-    and only the head is trained. This is fast and fits in 512 MB of RAM.
+    and only the head is trained. This is fast and needs little memory.
     """
     if isinstance(model, str):
         model = load_trained_model(model)
-    callbacks = default_callbacks(patience) + (callbacks or [])
 
     if n_trainable > 0:
         set_trainable_layers(model, n_trainable)
         compile_model(model, learning_rate)
         history = model.fit(train_ds, validation_data=val_ds, epochs=epochs,
-                            callbacks=callbacks, verbose=verbose)
+                            callbacks=default_callbacks(patience) + (callbacks or []),
+                            verbose=verbose)
         return model, history
 
-    # Split the model at the pooling layer: frozen feature extractor + trainable head.
-    pool = next(i for i, layer in enumerate(model.layers)
-                if isinstance(layer, layers.GlobalAveragePooling2D))
-    extractor = tf.keras.Model(model.input, model.layers[pool].output)
-    head = tf.keras.Sequential(model.layers[pool + 1:])  # shares weights with `model`
-
-    x_train, y_train = extract_features(extractor, train_ds)
-    x_val, y_val = extract_features(extractor, val_ds)
-    compile_model(head, learning_rate)
-    history = head.fit(x_train, y_train, validation_data=(x_val, y_val), batch_size=16,
-                       epochs=epochs, callbacks=callbacks, verbose=verbose)
+    extractor, head = split_model(model)
+    history = train_head(head, extract_features(extractor, train_ds),
+                         extract_features(extractor, val_ds),
+                         epochs, learning_rate, patience, verbose, callbacks)
     return model, history
 
 
+def split_model(model):
+    """Split at the pooling layer: frozen feature extractor + head (shares weights with model)."""
+    pool = next(i for i, layer in enumerate(model.layers)
+                if isinstance(layer, layers.GlobalAveragePooling2D))
+    extractor = tf.keras.Model(model.input, model.layers[pool].output)
+    head = tf.keras.Sequential(model.layers[pool + 1:])
+    return extractor, head
+
+
 def extract_features(extractor, ds):
+    """Run the frozen base once. Returns (features, labels)."""
     features, labels = [], []
     for x, y in ds:
         features.append(extractor.predict_on_batch(x))
         labels.append(y.numpy())
     return np.concatenate(features), np.concatenate(labels)
+
+
+def train_head(head, train, val, epochs=5, learning_rate=1e-4, patience=2,
+               verbose=0, callbacks=None):
+    """Train the head on precomputed (features, labels)."""
+    compile_model(head, learning_rate)
+    return head.fit(*train, validation_data=val, batch_size=16, epochs=epochs,
+                    callbacks=default_callbacks(patience) + (callbacks or []),
+                    verbose=verbose)

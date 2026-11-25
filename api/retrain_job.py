@@ -1,9 +1,10 @@
 """Background retraining job.
 
 Steps: load uploads from the database -> preprocess -> score the current model
--> continue training it -> score the new model -> keep it only if F1 is not worse.
+-> continue training its head -> score the new model -> keep it only if F1 is not worse.
 """
 
+import ctypes
 import gc
 import os
 import random
@@ -14,8 +15,8 @@ import traceback
 import tensorflow as tf
 
 import database
-from model import evaluate_model, load_trained_model, retrain_model, save_model
-from prediction import clear_model_cache
+from model import compute_metrics, extract_features, save_model, train_head
+from prediction import load_parts, mark_saved, model_lock
 from preprocessing import (CLASS_NAMES, is_valid_image, list_images, make_dataset,
                            make_dataset_from_bytes, stratified_split)
 
@@ -41,14 +42,13 @@ def start(trigger, cfg):
 
 def _run(job_id, cfg):
     log_lines = []
+    head = old_weights = None
 
     def log(message, stage):
         log_lines.append(time.strftime("%H:%M:%S ") + message)
         database.update_job(job_id, stage=stage, log="\n".join(log_lines))
 
     try:
-        clear_model_cache()  # free memory; predictions reload the model when needed
-
         # 1. Load the new images from the database
         log("Loading uploaded images from the database", "loading")
         uploads = [u for u in database.pending_uploads() if is_valid_image(u[2])]
@@ -67,36 +67,43 @@ def _run(job_id, cfg):
                                            cfg["batch_size"], augment=True, shuffle=True)
         val_ds = make_dataset_from_bytes([images[i] for i in val_idx],
                                          [labels[i] for i in val_idx], cfg["batch_size"])
+        test_ds = make_dataset(*list_images(cfg["test_dir"]), batch_size=cfg["batch_size"])
         log(f"  + {len(replay_images)} original images; "
             f"{len(train_idx)} train / {len(val_idx)} validation", "preprocessing")
 
-        # 3. Score the current model on the test set
-        log("Evaluating the current model on the test set", "evaluating")
-        test_ds = make_dataset(*list_images(cfg["test_dir"]), batch_size=cfg["batch_size"])
-        model = load_trained_model(cfg["model_path"])
-        old = evaluate_model(model, test_ds)
+        # 3. Run the frozen MobileNetV2 base once on every image
+        log("Extracting MobileNetV2 features", "preprocessing")
+        model, extractor, head = load_parts(cfg["model_path"])  # same objects as predictions
+        train = extract_features(extractor, train_ds)
+        val = extract_features(extractor, val_ds)
+        x_test, y_test = extract_features(extractor, test_ds)
+
+        # 4. Score the current model on the test set
+        old = compute_metrics(y_test, head.predict(x_test, verbose=0))
         log(f"  current model: accuracy {old['accuracy']:.4f}, F1 {old['f1']:.4f}", "evaluating")
 
-        # 4. Continue training the current model
+        # 5. Continue training the current model's head
         log(f"Retraining from the current model (up to {cfg['epochs']} epochs)", "training")
-        model, history = retrain_model(
-            model, train_ds, val_ds, epochs=cfg["epochs"],
-            learning_rate=cfg["learning_rate"], n_trainable=cfg["fine_tune_layers"],
-            callbacks=[EpochLogger(log)])
+        old_weights = head.get_weights()
+        with model_lock:  # predictions wait for the few seconds of training
+            history = train_head(head, train, val, epochs=cfg["epochs"],
+                                 learning_rate=cfg["learning_rate"],
+                                 callbacks=[EpochLogger(log)])
 
-        # 5. Score the new model and decide
-        log("Evaluating the retrained model on the test set", "evaluating")
-        new = evaluate_model(model, test_ds)
-        log(f"  retrained model: accuracy {new['accuracy']:.4f}, F1 {new['f1']:.4f}", "evaluating")
+            # 6. Score the new model and decide
+            new = compute_metrics(y_test, head.predict(x_test, verbose=0))
+            log(f"  retrained model: accuracy {new['accuracy']:.4f}, F1 {new['f1']:.4f}",
+                "evaluating")
 
-        promoted = new["f1"] >= old["f1"]
-        version = None
-        if promoted:
-            version = os.path.basename(save_model(model, cfg["model_dir"])[1])
-            clear_model_cache()
-            log(f"Promoted: the new model is live ({version})", "done")
-        else:
-            log("Not promoted: the new model scored lower, the old one stays live", "done")
+            promoted = new["f1"] >= old["f1"]
+            version = None
+            if promoted:
+                version = os.path.basename(save_model(model, cfg["model_dir"])[1])
+                mark_saved(cfg["model_path"])
+                log(f"Promoted: the new model is live ({version})", "done")
+            else:
+                head.set_weights(old_weights)  # roll back
+                log("Not promoted: the new model scored lower, the old one stays live", "done")
 
         database.mark_uploads_used([u[0] for u in uploads], job_id)
         database.update_job(
@@ -107,12 +114,23 @@ def _run(job_id, cfg):
             new_accuracy=new["accuracy"], new_f1=new["f1"],
             promoted=int(promoted), model_version=version)
     except Exception as error:
+        if old_weights is not None:
+            head.set_weights(old_weights)  # never leave a half-trained model live
         traceback.print_exc()
         log(f"FAILED: {error}", "failed")
         database.update_job(job_id, status="failed", finished_at=time.time(), error=str(error))
     finally:
-        gc.collect()
+        free_memory()
         _lock.release()
+
+
+def free_memory():
+    """Return freed memory to the OS (matters on a 512 MB instance)."""
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except OSError:
+        pass  # not Linux
 
 
 def _replay_sample(train_dir, per_class):
